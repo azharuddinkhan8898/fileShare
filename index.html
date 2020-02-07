@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+</head>
+
+<body>
+    <h3>Your ID: <span id="yid"></span></h3>
+    <h4>Connected with: <span id="cid"></span></h4>
+    <input type="file" id="photo">
+    <input type="text" placeholder="connect with" id="connect">
+    <button>Connect</button>
+    <p>Recieving file: <span id="per">0</span>%, File Name: <span id="name"></span></p>
+    <p>Sending file: <span id="sper">0</span>%, File Name: <span id="sname"></span></p>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@0.3.20/dist/peer.min.js"></script>
+    <script>
+        var digits = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890'
+        var randomid = "";
+        function dataURItoBlob(dataURI) {
+            // convert base64 to raw binary data held in a string
+            // doesn't handle URLEncoded DataURIs - see SO answer #6850276 for code that does this
+            var byteString = atob(dataURI.split(',')[1]);
+
+            // separate out the mime component
+            var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+
+            // write the bytes of the string to an ArrayBuffer
+            var ab = new ArrayBuffer(byteString.length);
+            var ia = new Uint8Array(ab);
+            for (var i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+
+            //Old Code
+            //write the ArrayBuffer to a blob, and you're done
+            //var bb = new BlobBuilder();
+            //bb.append(ab);
+            //return bb.getBlob(mimeString);
+
+            //New Code
+            return new Blob([ab], {
+                type: mimeString
+            });
+
+
+        }
+
+        function generateRandomID(){
+          randomid = "";
+          for (i = 0; i < 2; i++) {
+            var rt = digits[Math.floor(Math.random() * 62)];
+            randomid += rt;
+          }
+      }
+
+        function chunkString(str, length) {
+            return str.match(new RegExp('.{1,' + length + '}', 'g'));
+        }
+        var conn;
+        var fileData;
+        document.addEventListener('DOMContentLoaded', event => {
+            generateRandomID();
+            var peer = new Peer(randomid, {  host: 'azhar-peerjs.herokuapp.com', port: 80, path: '/' });
+            peer.on('open', function (id) {
+                console.log('My peer ID is: ' + id);
+                document.querySelector("#yid").innerHTML = id;
+                peer.on('connection', function (conn) {
+                    conn.on('open', function () {
+                        document.querySelector("#cid").innerHTML = conn.peer;
+                        console.log("connection open")
+                        conn.on('data', function (data) {
+                            if (data.chunk) {
+                                if (data.chunkN === 0) {
+                                    fileData = '';
+                                }
+                                conn.send('chunk' + (data.chunkN + 1));
+                                //console.log('chunk number:',data.chunkN);
+                                document.querySelector("#per").innerHTML = data
+                                    .chunkN + 1;
+                                document.querySelector("#name").innerHTML = data
+                                    .name;
+                                fileData = fileData + data.chunkF;
+                                if (data.chunkN >= 99) {
+                                    console.log(fileData)
+                                    var a = document.createElement("a");
+                                    document.body.appendChild(a);
+                                    a.style = "display: none";
+                                    const fileBlob = dataURItoBlob(fileData);
+                                    const url = window.URL.createObjectURL(
+                                        fileBlob);
+                                    console.log(url, data.name, data.type)
+                                    a.href = url;
+                                    a.download = data.name;
+                                    a.click();
+                                    window.URL.revokeObjectURL(url);
+                                }
+                            }
+                        });
+                    });
+                });
+            });
+
+
+
+            document.querySelector('button').addEventListener('click', function () {
+                console.log(document.querySelector("#connect").value)
+                conn = peer.connect(document.querySelector("#connect").value, {
+                    label: {
+                        name: "azhar",
+                        age: "54"
+                    }
+                });
+                conn.on('open', function () {
+                    console.log("connection open")
+                    document.querySelector("#cid").innerHTML = conn.peer;
+                    conn.on('data', function (data) {
+                        if (parseInt(data.replace("chunk", "")) <= 99) {
+                            console.log(parseInt(data.replace("chunk", "")) + 1)
+                            document.querySelector("#sper").innerHTML = parseInt(data
+                                .replace("chunk", "")) + 1;
+                            document.querySelector("#sname").innerHTML = filename;
+                            conn.send({
+                                chunkF: chunks[parseInt(data.replace("chunk",
+                                    ""))],
+                                name: filename,
+                                type: filetype,
+                                chunk: true,
+                                chunkN: parseInt(data.replace("chunk", ""))
+                            })
+                        }
+
+                    });
+                });
+            });
+
+            var chunks;
+            document.querySelector('input').onchange = function (event) {
+                function getBase64(file) {
+                    var reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = function () {
+                        // var a = document.createElement("a");
+                        // document.body.appendChild(a);
+                        // a.style = "display: none";
+                        console.log(reader.result.length / 100);
+                        chunks = chunkString(reader.result, Math.ceil(reader.result.length / 100))
+                        conn.send({
+                            chunkF: chunks[0],
+                            name: filename,
+                            type: filetype,
+                            chunk: true,
+                            chunkN: 0
+                        })
+                        //console.log(chunks.join(""))
+                        // chunks.forEach(function(el, i){
+                        //     conn.send({chunkF:el, name:filename, type:filetype, chunk:true, chunkN: i+1});
+                        // })
+
+                        //console.log(reader.result)
+                        // const fileBlob = dataURItoBlob(chunks.join(""));
+
+                        // const url = window.URL.createObjectURL(fileBlob);
+                        // console.log(url, filename, filetype)
+                        // a.href = url;
+                        // a.download = filename;
+                        // a.click();
+                        // window.URL.revokeObjectURL(url);
+                    };
+                    reader.onerror = function (error) {
+                        console.log('Error: ', error);
+                    };
+                }
+
+                var file = document.querySelector('#photo').files[0];
+                filename = file.name;
+                filetype = file.type;
+                getBase64(file); // prints the base64 string
+                // const file = event.target.files[0]
+                // const blob = new Blob(event.target.files, { type: file.type })
+                // console.log(blob)
+                // const data = {
+                //     file: blob,
+                //     filename: file.name,
+                //     filetype: file.type
+                // }
+                // console.log(data);
+                // const bytes = new Uint8Array(data.file)
+
+                // console.log('data:image/png;base64,' + encode(bytes))
+            }
+
+
+        })
+    </script>
+</body>
+
+</html>
